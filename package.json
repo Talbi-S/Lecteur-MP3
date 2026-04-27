@@ -1,0 +1,29 @@
+{
+  "name": "lecteur-de-music",
+  "version": "1.0.0",
+  "description": "Lecteur de musique Ravena",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "author": "Sarah",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^41.1.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.ravena.player",
+    "productName": "Ravena Player",
+    "win": {
+      "target": "nsis",
+      "icon": "build/Music - Yellow.ico"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache"
+    ]
+  }
+}
