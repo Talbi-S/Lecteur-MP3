@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raven Music - Version Web</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+    <script src="Rav-Web.js" defer></script>
+</head>
+
+<body>
+<header class="titlebar">
+    <h1>Raven Web Player</h1>
+</header>
+
+<main>
+    <div id="menuToggle">
+        <img src="Icons/Home - Yellow.svg" alt="Menu" id="homeLogo">
+    </div>
+
+    <div class="sidebar" id="mainSidebar">
+        <div class="sidebar-content">
+            <h2>Menu</h2>
+            <p id="btnHome">Home</p>
+            <p id="btnFichier">Bibliothèque</p>
+            <p id="btnPlaylist">Playlist</p>
+            <div class="sidebar-footer">
+                <p id="btnParametre">
+                    <img src="Icons/Settings - Yellow.svg" width="20"> Paramètre
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div id="homeView">
+        <div class="album-cover-container">
+            <img id="cover" src="" alt="Pochette Album">
+        </div>
+        <h2 id="musicTitle">Titre Music</h2>
+        
+        <div id="controls">
+            <button id="repeat"><img id="repeatIcon" src="Icons/fleches-repetition.svg" alt="répéter"></button>
+            <button id="prev"><img src="Icons/Skip Back - Yellow.svg" alt="précédent"></button>
+            <button id="playPauseBtn"><img id="icon" src="Icons/Play - Yellow.svg" alt="Play/Pause"></button>
+            <button id="next"><img src="Icons/Skip Forward - Yellow.svg" alt="suivante"></button>
+            <button id="shuffle"><img src="Icons/melanger.svg" alt="Random"></button>
+        </div>
+
+        <div id="progressContainer">
+            <span id="currentTime">0:00</span>
+            <div id="progressBarContainer"><div id="progress"></div></div>
+            <span id="duration">0:00</span>
+        </div>
+
+        <div id="volumeContainer">
+            <img id="volumeIcon" src="Icons/Volume.svg" width="25">
+            <input type="range" id="volume" min="0" max="1" step="0.01" value="1">
+        </div>
+    </div>
+
+    <div id="fileView" style="display:none;">
+        <div id="fileViewHeader">
+            <h2>Bibliothèque Web</h2>
+            <input type="file" id="webMusicInput" accept="audio/*" multiple style="display: none;">
+            <button id="btnLoadWebMusic" class="action-btn">Charger des musiques</button>
+        </div>
+        <table id="fileTable">
+            <thead>
+                <tr>
+                    <th>Titre de la music</th>
+                    <th>Durée</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="fileListBody"></tbody>
+        </table>
+    </div>
+
+    <div id="playListView" style="display: none;">
+        <div id="playlistViewHeader">
+            <h2>Mes Playlists</h2>
+            <button id="addPlayListBtn">+ Créer une Playlist</button>
+        </div>
+        <ul id="playlistList"></ul>
+    </div>
+
+    <div id="playlistDetailView" style="display: none;">
+        <div id="playlistDetailHeader">
+            <button id="btnBackToPlaylists" class="action-btn">Retour</button>
+            <h2 id="currentPlaylistTitle">Titre de la Playlist</h2>
+            <button id="playlistOptionsBtn" class="playlist-menu-btn">Options</button>
+        </div>
+        <table id="playlistSongsTable">
+            <thead>
+                <tr>
+                    <th>Titre de la music</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="playlistSongBody"></tbody>
+        </table>
+    </div>
+
+    <div id="parametreView" style="display: none;">
+        <div id="parametreHeader"><h2>Paramètres</h2></div>
+        <div class="parametre-section">
+            <h3 class="parametre-section-title">À Propos</h3>
+            <div class="parametre-item"><label>Application</label><span class="parametre-value">Raven Web Player</span></div>
+            <div class="parametre-item"><label>Version</label><span class="parametre-value">Web 1.0 (LocalStorage)</span></div>
+        </div>
+    </div>
+
+    <div id="modalCreatePlaylist" style="display: none;">
+        <div id="modalCreateBox">
+            <h3 id="modalCreateTitle">Nouvelle Playlist</h3>
+            <input type="text" id="newPlayListName" placeholder="Nom de la Playlist">
+            <div id="modalCreateButtons">
+                <button id="modalCreateConfirm">Créer</button>
+                <button id="modalCreateCancel">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalOverlay" style="display: none;">
+        <div id="modalBox">
+            <h3 id="modalTitle">Ajouter à la playlist</h3>
+            <p id="modalMusicName"></p>
+            <select id="modalSelect"></select>
+            <div id="modalButtons">
+                <button id="modalConfirm">Ajouter</button>
+                <button id="modalCancel">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalConfirmOverlay" style="display: none;">
+        <div id="modalConfirmBox">
+            <h3 id="modalConfirmTitle">Confirmation</h3>
+            <p id="modalConfirmMessage">Message</p>
+            <div id="modalConfirmButtons">
+                <button id="modalConfirmOk">Oui</button>
+                <button id="modalConfirmCancel">Non</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalInfoOverlay" style="display: none;">
+        <div id="modalInfoBox">
+            <h3 id="modalInfoTitle">Information</h3>
+            <p id="modalInfoMessage">Message</p>
+            <div id="modalInfoButtons">
+                <button id="modalInfoOk">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalRenamePlaylist" style="display: none;">
+        <div id="modalRenameBox">
+            <h3 id="modalRenameTitle">Renommer</h3>
+            <input type="text" id="renamePlaylistInput">
+            <div id="modalRenameButtons">
+                <button id="modalRenameConfirm">Valider</button>
+                <button id="modalRenameCancel">Annuler</button>
+            </div>
+        </div>
+    </div>
+
+</main>
+</body>
+</html>
