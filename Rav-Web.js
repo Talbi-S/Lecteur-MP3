@@ -1,8 +1,7 @@
+const { ipcRenderer } = require('electron');
 const audio = new Audio();
 
-// =============================================
-// ÉLÉMENTS HTML
-// =============================================
+// Elements HTML
 const playlistElement = document.getElementById("fileListBody");
 const btn = document.getElementById("playPauseBtn");
 const icon = document.getElementById("icon");
@@ -24,48 +23,33 @@ const durationEl = document.querySelector("#duration");
 const progressConainerDiv = document.getElementById("progressBarContainer");
 const progressDiv = document.getElementById("progress");
 const cover = document.querySelector("#cover");
-const parametreView = document.getElementById("parametreView");
-
+const newPlayListNameInput = document.getElementById("newPlayListName");
 const addPlayListBtn = document.getElementById("addPlayListBtn");
 const playlistListElement = document.getElementById("playlistList");
 const playlistDetailView = document.getElementById("playlistDetailView");
 const playlistSongBody = document.getElementById("playlistSongBody");
 const currentPlaylistTitle = document.getElementById("currentPlaylistTitle");
 const btnBackToPlaylists = document.getElementById("btnBackToPlaylists");
-
 const modalOverlay = document.getElementById("modalOverlay");
 const modalMusicName = document.getElementById("modalMusicName");
 const modalSelect = document.getElementById("modalSelect");
+const modalConfirm = document.getElementById("modalConfirm");
 const modalCancel = document.getElementById("modalCancel");
 const modalCreatePlaylist = document.getElementById("modalCreatePlaylist");
-const newPlayListNameInput = document.getElementById("newPlayListName");
-
-const btnLoadWebMusic = document.getElementById("btnLoadWebMusic");
-const webMusicInput = document.getElementById("webMusicInput");
+const defaultVolumeSlider = document.getElementById("defaultVolume");
+const defaultVolumeValue = document.getElementById("defaultVolumeValue");
+const parametreView = document.getElementById("parametreView");
 
 // Variables globales
-let playlist = []; // Musiques chargées en mémoire RAM (temporaire)
-let allPlaylists = []; // Playlists (sauvegardées dans le navigateur)
+let allPlaylists = [];
+let currentPlaylistSongs = [];
+let isPlaylistMode = false;
+let playlist = [];
 let currentIndex = 0;
+let lastVolume = 1;
 
 // =============================================
-// SAUVEGARDE WEB (LOCALSTORAGE)
-// =============================================
-function savePlaylistsToWeb() {
-    localStorage.setItem('ravenPlaylists', JSON.stringify(allPlaylists));
-}
-
-function loadPlaylistsFromWeb() {
-    const saved = localStorage.getItem('ravenPlaylists');
-    if (saved) {
-        allPlaylists = JSON.parse(saved);
-        displayPlaylist();
-    }
-}
-loadPlaylistsFromWeb(); // Chargement au lancement
-
-// =============================================
-// FONCTIONS MODALES PERSONNALISÉES
+// MODALES CUSTOM
 // =============================================
 function showConfirm(message, title = "Confirmation") {
     return new Promise((resolve) => {
@@ -128,14 +112,289 @@ function showPrompt(message, defaultValue = "", title = "Saisie") {
 
         newConfirm.addEventListener("click", submit);
         newCancel.addEventListener("click", () => { overlay.style.display = "none"; resolve(null); });
+        input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") submit();
+            if (e.key === "Escape") { overlay.style.display = "none"; resolve(null); }
+        });
     });
 }
 
 // =============================================
+// DÉMARRAGE
+// =============================================
+async function init() {
+    await loadFilesFromLocal();
+    await loadPlaylistsFromLocal();
+
+    const savedDefaultVolume = localStorage.getItem("defaultVolume");
+    if (savedDefaultVolume !== null) {
+        audio.volume = parseFloat(savedDefaultVolume);
+        volumeControl.value = savedDefaultVolume;
+        defaultVolumeSlider.value = savedDefaultVolume;
+        defaultVolumeValue.textContent = Math.round(savedDefaultVolume * 100) + "%";
+    }
+}
+init();
+
+// =============================================
+// CHARGEMENT / SAUVEGARDE
+// =============================================
+async function loadFilesFromLocal() {
+    const saved = await ipcRenderer.invoke('get-music-list');
+    for (let music of saved) {
+        if (!music.path) continue;
+        playlist.push({ name: music.name, url: `file:///${music.path.replace(/\\/g, '/')}`, path: music.path });
+    }
+
+    playlist.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+    playlist.forEach((music, index) => addToPlaylist(music.name, index));
+    displayStoredFiles();
+
+    const watchedFolder = await ipcRenderer.invoke('get-watched-folder');
+    if (watchedFolder) {
+        document.getElementById('watchedFolderPath').textContent = watchedFolder;
+        await startWatchingFolder(watchedFolder);
+    }
+}
+
+async function loadPlaylistsFromLocal() {
+    allPlaylists = await ipcRenderer.invoke('load-playlists');
+    displayPlaylist();
+}
+
+async function saveMusicList() {
+    await ipcRenderer.invoke('save-music-list', playlist.map(m => ({ name: m.name, path: m.path })));
+}
+
+async function savePlaylistsToLocal() {
+    const toSave = allPlaylists.map(pl => ({
+        title: pl.title,
+        songs: pl.songs.map(s => ({ name: s.name, path: s.path || "" }))
+    }));
+    await ipcRenderer.invoke('save-playlists', toSave);
+}
+
+// =============================================
+// SURVEILLANCE DU DOSSIER PRINCIPAL
+// =============================================
+document.getElementById('removeMusicFolderBtn').addEventListener('click', async () => {
+    const ok = await showConfirm("Supprimer le dossier surveillé ? Les musiques resteront dans la bibliothèque.", "Supprimer le dossier");
+    if (!ok) return;
+
+    await ipcRenderer.invoke('remove-watched-folder');
+    await ipcRenderer.invoke('stop-watching');
+
+    playlist = [];
+    await saveMusicList();
+    currentPage = 0;
+    displayStoredFiles();
+    if (playlistElement) playlistElement.innerHTML = "";
+
+    document.getElementById('watchedFolderPath').textContent = "Aucun dossier";
+    await showInfo("Bibliothèque réinitialisée avec succès.", "Nettoyage");
+});
+
+async function startWatchingFolder(folderPath) {
+    const files = await ipcRenderer.invoke('watch-folder', folderPath);
+    const newFiles = files.filter(f => !playlist.find(m => m.name === f.name));
+    if (newFiles.length > 0) await addFilesToPlaylist(newFiles);
+}
+
+async function addFilesToPlaylist(files) {
+    const newFiles = files.filter(f => !playlist.find(m => m.name === f.name));
+    if (newFiles.length === 0) return;
+
+    for (let file of newFiles) {
+        const url = `file:///${file.path.replace(/\\/g, '/')}`;
+        playlist.push({ name: file.name, url: url, path: file.path });
+    }
+
+    playlist.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+    playlistElement.innerHTML = "";
+    playlist.forEach((music, index) => addToPlaylist(music.name, index));
+
+    await saveMusicList();
+    displayStoredFiles();
+}
+
+function addToPlaylist(name, index) {
+    const li = document.createElement("li");
+    li.textContent = name;
+    li.setAttribute("data-index", index);
+    li.addEventListener("click", () => { playMusic(index); });
+    playlistElement.appendChild(li);
+}
+
+// =============================================
+// LECTURE MUSIQUE
+// =============================================
+function playMusic(index) {
+    currentIndex = index;
+    const music = playlist[index];
+    audio.src = music.url;
+    audio.play();
+    icon.src = "Icons/Pause - Yellow.svg";
+    loadCoverFromPath(music.path);
+    document.getElementById("musicTitle").textContent = music.name.replace(/\.[^/.]+$/, "");
+    document.querySelectorAll("[data-index]").forEach(li => { li.style.background = ""; });
+    const active = document.querySelector(`[data-index="${index}"]`);
+    if (active) active.style.background = "#555";
+    updateActivePlaylistSquare();
+}
+
+function loadCoverFromPath(filePath) {
+    if (!filePath) { 
+        cover.src = ""; 
+        notifyOBS(); 
+        return; 
+    }
+    
+    try {
+        const fs = require('fs');
+        const fd = fs.openSync(filePath, 'r');
+        const buf = Buffer.alloc(512 * 1024);
+        fs.readSync(fd, buf, 0, buf.length, 0);
+        fs.closeSync(fd);
+        const blob = new Blob([buf]);
+        
+        jsmediatags.read(blob, {
+            onSuccess: function(tag) {
+                const picture = tag.tags.picture;
+                if (picture) {
+                    let base64 = "";
+                    for (let i = 0; i < picture.data.length; i++) {
+                        base64 += String.fromCharCode(picture.data[i]);
+                    }
+                    cover.src = `data:${picture.format};base64,${btoa(base64)}`;
+                } else {
+                    cover.src = "";
+                }
+                notifyOBS(); 
+            },
+            onError: function() { 
+                cover.src = ""; 
+                notifyOBS(); 
+            }
+        });
+    } catch(e) { 
+        cover.src = ""; 
+        notifyOBS(); 
+    }
+}
+
+// =============================================
+// BOUTONS LECTEUR
+// =============================================
+btn.onclick = () => {
+    if (audio.src) {
+        if (audio.paused) {
+            audio.play();
+            icon.src = "Icons/Pause - Yellow.svg";
+        } else {
+            audio.pause();
+            icon.src = "Icons/Play - Yellow.svg";
+        }
+    }
+    updateActivePlaylistSquare();
+};
+
+nextBtn.onclick = () => {
+    if (shuffleMode) {
+        if (isPlaylistMode && currentPlaylistSongs.length > 0) {
+            playMusic(currentPlaylistSongs[Math.floor(Math.random() * currentPlaylistSongs.length)]);
+        } else {
+            playMusic(Math.floor(Math.random() * playlist.length));
+        }
+    } else if (isPlaylistMode && currentPlaylistSongs.length > 0) {
+        const pos = currentPlaylistSongs.indexOf(currentIndex);
+        playMusic(currentPlaylistSongs[(pos + 1) % currentPlaylistSongs.length]);
+    } else {
+        currentIndex = (currentIndex + 1) % playlist.length;
+        playMusic(currentIndex);
+    }
+};
+
+prevBtn.onclick = () => {
+    if (shuffleMode) {
+        if (isPlaylistMode && currentPlaylistSongs.length > 0) {
+            playMusic(currentPlaylistSongs[Math.floor(Math.random() * currentPlaylistSongs.length)]);
+        } else {
+            playMusic(Math.floor(Math.random() * playlist.length));
+        }
+    } else if (isPlaylistMode && currentPlaylistSongs.length > 0) {
+        const pos = currentPlaylistSongs.indexOf(currentIndex);
+        playMusic(currentPlaylistSongs[(pos - 1 + currentPlaylistSongs.length) % currentPlaylistSongs.length]);
+    } else {
+        currentIndex = (currentIndex - 1 + playlist.length) % playlist.length;
+        playMusic(currentIndex);
+    }
+};
+
+let shuffleMode = false;
+shuffleBtn.onclick = () => {
+    shuffleMode = !shuffleMode;
+    if (shuffleMode) {
+        shuffleBtn.querySelector('img').classList.add("active-control");
+        if (isPlaylistMode && currentPlaylistSongs.length > 0) {
+            playMusic(currentPlaylistSongs[Math.floor(Math.random() * currentPlaylistSongs.length)]);
+        } else {
+            playMusic(Math.floor(Math.random() * playlist.length));
+        }
+    } else {
+        shuffleBtn.querySelector('img').classList.remove("active-control");
+    }
+};
+
+let repeatMode = 0;
+const repeatBtn = document.getElementById("repeat");
+const repeatImg = document.getElementById("repeatIcon");
+const repeatIcons = ["Icons/fleches-repetition.svg", "Icons/fleches-repetition.svg", "Icons/fleches-repeter-1.svg"];
+
+repeatBtn.addEventListener("click", () => {
+    repeatMode = (repeatMode + 1) % 3;
+    repeatImg.src = repeatIcons[repeatMode];
+    repeatMode > 0 ? repeatBtn.classList.add("active-control") : repeatBtn.classList.remove("active-control");
+});
+
+audio.addEventListener("ended", () => {
+    if (repeatMode === 2) {
+        audio.currentTime = 0;
+        audio.play();
+        icon.src = "Icons/Pause - Yellow.svg";
+    } else if (shuffleMode) {
+        if (isPlaylistMode && currentPlaylistSongs.length > 0) {
+            playMusic(currentPlaylistSongs[Math.floor(Math.random() * currentPlaylistSongs.length)]);
+        } else {
+            playMusic(Math.floor(Math.random() * playlist.length));
+        }
+    } else if (isPlaylistMode || repeatMode === 1) {
+        nextBtn.click();
+    } else {
+        audio.currentTime = 0;
+        icon.src = "Icons/Play - Yellow.svg";
+    }
+});
+
+audio.addEventListener("play", () => {
+    // On redirige vers Home seulement si on n'est pas déjà dans une autre vue
+    if (parametreView.style.display === "block") return;
+    homeView.style.display = "block";
+    fileView.style.display = "none";
+    playListView.style.display = "none";
+    sidebar.classList.remove("active");
+});
+
+// =============================================
 // NAVIGATION SIDEBAR
 // =============================================
-menuToggle.addEventListener("click", () => {
-    sidebar.classList.toggle("active");
+menuToggle.addEventListener("click", async () => {
+    const width = await ipcRenderer.invoke('get-window-size');
+    if (width < 800) {
+        ipcRenderer.send('expand-window');
+        setTimeout(() => { sidebar.classList.add("active"); }, 150);
+    } else {
+        sidebar.classList.toggle("active");
+    }
 });
 
 document.querySelectorAll(".sidebar p").forEach(link => {
@@ -156,6 +415,7 @@ btnFichier.addEventListener("click", () => {
     fileView.style.display = "block";
     playlistDetailView.style.display = "none";
     parametreView.style.display = "none";
+    isPlaylistMode = false;
     displayStoredFiles();
 });
 
@@ -177,46 +437,103 @@ document.getElementById("btnParametre").addEventListener("click", () => {
 });
 
 // =============================================
-// CHARGEMENT DES MUSIQUES WEB
+// CONTRÔLES FENÊTRE ELECTRON
 // =============================================
-btnLoadWebMusic.addEventListener("click", () => {
-    webMusicInput.click();
+document.getElementById('minimizeBtn').addEventListener('click', () => { ipcRenderer.send('minimize-window'); });
+document.getElementById('maximizeBtn').addEventListener('click', () => { ipcRenderer.send('maximize-window'); });
+document.getElementById('closeBtn').addEventListener('click', () => { ipcRenderer.send('close-window'); });
+
+// =============================================
+// PROGRESSION & VOLUME
+// =============================================
+audio.addEventListener("timeupdate", () => {
+    if (!audio.duration) return;
+    const percent = (audio.currentTime / audio.duration) * 100;
+    progressDiv.style.width = percent + "%";
+    currentTimeEl.textContent = formatTime(audio.currentTime);
+    durationEl.textContent = formatTime(audio.duration);
 });
 
-webMusicInput.addEventListener("change", (event) => {
-    const files = event.target.files;
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const objectUrl = URL.createObjectURL(file); 
-        
-        if (!playlist.find(m => m.name === file.name)) {
-            playlist.push({
-                name: file.name,
-                url: objectUrl,
-                fileObj: file 
-            });
-        }
+progressConainerDiv.addEventListener("click", (e) => {
+    if (audio.duration) {
+        audio.currentTime = (e.offsetX / progressConainerDiv.clientWidth) * audio.duration;
     }
-    playlist.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-    displayStoredFiles();
 });
+
+function formatTime(time) {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60).toString().padStart(2, "0");
+    return minutes + ":" + seconds;
+}
+
+volumeControl.addEventListener("input", () => {
+    audio.volume = parseFloat(volumeControl.value);
+    if (audio.volume == 0) volumeIcon.src = "Icons/Volume x.svg";
+    else if (audio.volume < 0.7) volumeIcon.src = "Icons/Volume 1.svg";
+    else volumeIcon.src = "Icons/Volume 2.svg";
+});
+
+volumeIcon.addEventListener("click", () => {
+    if (audio.volume > 0) {
+        lastVolume = audio.volume;
+        audio.volume = 0;
+        volumeControl.value = 0;
+        volumeIcon.src = "Icons/Volume x.svg";
+    } else {
+        audio.volume = lastVolume;
+        volumeControl.value = lastVolume;
+        volumeIcon.src = audio.volume < 0.7 ? "Icons/Volume 1.svg" : "Icons/Volume 2.svg";
+    }
+});
+
+defaultVolumeSlider.addEventListener("input", () => {
+    const val = defaultVolumeSlider.value;
+    defaultVolumeValue.textContent = Math.round(val * 100) + "%";
+    audio.volume = parseFloat(val);
+    volumeControl.value = val;
+    localStorage.setItem("defaultVolume", val);
+});
+
+// =============================================
+// TABLEAU FICHIERS
+// =============================================
+const durationCache = {};
+const ROWS_PER_PAGE = 50;
+let currentPage = 0;
 
 function displayStoredFiles() {
-    playlistElement.innerHTML = "";
+    const fileListBody = document.getElementById("fileListBody");
+    if (!fileListBody) return;
+    fileListBody.innerHTML = "";
 
-    playlist.forEach((music, i) => {
+    const start = currentPage * ROWS_PER_PAGE;
+    const end = Math.min(start + ROWS_PER_PAGE, playlist.length);
+    const visible = playlist.slice(start, end);
+
+    visible.forEach((music, i) => {
+        const index = start + i;
         const row = document.createElement("tr");
 
         const titleCell = document.createElement("td");
         titleCell.textContent = music.name.replace(/\.[^/.]+$/, "");
         titleCell.style.cursor = "pointer";
-        titleCell.onclick = () => playMusic(i);
+        titleCell.onclick = () => playMusic(index);
 
         const durationCell = document.createElement("td");
-        durationCell.textContent = "--:--";
+        if (durationCache[music.path]) {
+            durationCell.textContent = durationCache[music.path];
+        } else {
+            durationCell.textContent = "...";
+            const tempAudio = new Audio(music.url);
+            tempAudio.onloadedmetadata = () => {
+                const formatted = formatTime(tempAudio.duration);
+                durationCache[music.path] = formatted;
+                durationCell.textContent = formatted;
+                tempAudio.src = '';
+            };
+        }
 
         const actionCell = document.createElement("td");
-        
         const addBtn = document.createElement("button");
         addBtn.textContent = "+";
         addBtn.classList.add("action-btn", "add-btn");
@@ -225,24 +542,61 @@ function displayStoredFiles() {
         const deleteBtn = document.createElement("button");
         deleteBtn.textContent = "X";
         deleteBtn.classList.add("action-btn", "delete-btn");
-        deleteBtn.onclick = async () => {
-            const ok = await showConfirm("Retirer cette musique de la session web ?", "Supprimer");
-            if (!ok) return;
-            playlist.splice(i, 1);
-            displayStoredFiles();
-        };
+        deleteBtn.onclick = () => deleteMusicFromFileList(index);
 
         actionCell.appendChild(addBtn);
         actionCell.appendChild(deleteBtn);
         row.appendChild(titleCell);
         row.appendChild(durationCell);
         row.appendChild(actionCell);
-        playlistElement.appendChild(row);
+        fileListBody.appendChild(row);
     });
+
+    updatePagination();
+}
+
+function updatePagination() {
+    const old = document.getElementById("pagination");
+    if (old) old.remove();
+    if (playlist.length <= ROWS_PER_PAGE) return;
+
+    const totalPages = Math.ceil(playlist.length / ROWS_PER_PAGE);
+    const nav = document.createElement("div");
+    nav.id = "pagination";
+    nav.style.cssText = "display:flex; justify-content:center; gap:10px; padding:15px 0; color:#FCA311;";
+
+    const prevBtnPag = document.createElement("button");
+    prevBtnPag.textContent = "← Préc";
+    prevBtnPag.classList.add("action-btn");
+    prevBtnPag.disabled = currentPage === 0;
+    prevBtnPag.onclick = () => { currentPage--; displayStoredFiles(); };
+
+    const info = document.createElement("span");
+    info.textContent = `Page ${currentPage + 1} / ${totalPages}  (${playlist.length} musiques)`;
+    info.style.cssText = "display:flex; align-items:center; font-size:13px;";
+
+    const nextBtnPag = document.createElement("button");
+    nextBtnPag.textContent = "Suiv →";
+    nextBtnPag.classList.add("action-btn");
+    nextBtnPag.disabled = currentPage >= totalPages - 1;
+    nextBtnPag.onclick = () => { currentPage++; displayStoredFiles(); };
+
+    nav.appendChild(prevBtnPag);
+    nav.appendChild(info);
+    nav.appendChild(nextBtnPag);
+    document.getElementById("fileView").appendChild(nav);
+}
+
+async function deleteMusicFromFileList(index) {
+    const ok = await showConfirm("Supprimer cette musique de la liste ?", "Supprimer");
+    if (!ok) return;
+    playlist.splice(index, 1);
+    saveMusicList();
+    displayStoredFiles();
 }
 
 // =============================================
-// GESTION DES PLAYLISTS
+// PLAYLISTS
 // =============================================
 addPlayListBtn.addEventListener("click", () => { modalCreatePlaylist.style.display = "flex"; });
 
@@ -252,8 +606,8 @@ document.getElementById("modalCreateConfirm").addEventListener("click", () => {
     allPlaylists.push({ title: name, songs: [] });
     newPlayListNameInput.value = "";
     modalCreatePlaylist.style.display = "none";
-    savePlaylistsToWeb(); 
     displayPlaylist();
+    savePlaylistsToLocal();
 });
 
 document.getElementById("modalCreateCancel").addEventListener("click", () => {
@@ -275,33 +629,36 @@ function displayPlaylist() {
         li.appendChild(titleSpan);
         playlistListElement.appendChild(li);
     });
-}
-
-function openPlaylist(index) {
-    currentPlaylistTitle.textContent = allPlaylists[index].title;
-    playListView.style.display = "none";
-    playlistDetailView.style.display = "block";
-
-    const menuBtn = document.getElementById("playlistOptionsBtn");
-    menuBtn.onclick = (e) => { openPlaylistMenu(e, index); };
-    
-    renderPlaylistSongs(index);
+    updateActivePlaylistSquare();
 }
 
 let activeMenu = null;
+
 function openPlaylistMenu(e, index) {
-    if (activeMenu) { activeMenu.remove(); activeMenu = null; return; }
+    if (activeMenu) {
+        activeMenu.remove();
+        activeMenu = null;
+        return;
+    }
 
     const menu = document.createElement("div");
     menu.classList.add("playlist-context-menu");
 
     const renameBtn = document.createElement("button");
     renameBtn.textContent = "Renommer";
-    renameBtn.onclick = () => { menu.remove(); activeMenu = null; renamePlaylist(index); };
+    renameBtn.onclick = () => {
+        menu.remove();
+        activeMenu = null;
+        renamePlaylist(index);
+    };
 
     const deleteBtn = document.createElement("button");
     deleteBtn.textContent = "Supprimer";
-    deleteBtn.onclick = () => { menu.remove(); activeMenu = null; deletePlaylist(index); };
+    deleteBtn.onclick = () => {
+        menu.remove();
+        activeMenu = null;
+        deletePlaylist(index);
+    };
 
     menu.appendChild(renameBtn);
     menu.appendChild(deleteBtn);
@@ -321,10 +678,14 @@ function openPlaylistMenu(e, index) {
 }
 
 async function renamePlaylist(index) {
-    const newName = await showPrompt("Nouveau nom de la playlist :", allPlaylists[index].title, "Renommer");
+    const newName = await showPrompt(
+        "Nouveau nom de la playlist :",
+        allPlaylists[index].title,
+        "Renommer la Playlist"
+    );
     if (!newName) return;
     allPlaylists[index].title = newName;
-    savePlaylistsToWeb(); 
+    savePlaylistsToLocal();
     displayPlaylist();
     currentPlaylistTitle.textContent = newName;
 }
@@ -333,10 +694,23 @@ async function deletePlaylist(index) {
     const ok = await showConfirm("Supprimer cette Playlist ?", "Supprimer");
     if (!ok) return;
     allPlaylists.splice(index, 1);
-    savePlaylistsToWeb(); 
+    savePlaylistsToLocal();
     displayPlaylist();
-    playlistDetailView.style.display = "none";
-    playListView.style.display = "block";
+    if (playlistDetailView.style.display === "block") {
+        playlistDetailView.style.display = "none";
+        playListView.style.display = "block";
+    }
+}
+
+function openPlaylist(index) {
+    currentPlaylistTitle.textContent = allPlaylists[index].title;
+    playListView.style.display = "none";
+    playlistDetailView.style.display = "block";
+
+    const menuBtn = document.getElementById("playlistOptionsBtn");
+    menuBtn.onclick = (e) => { openPlaylistMenu(e, index); };
+
+    renderPlaylistSongs(index);
 }
 
 function renderPlaylistSongs(playlistIndex) {
@@ -351,9 +725,16 @@ function renderPlaylistSongs(playlistIndex) {
         titleCell.onclick = () => {
             const globalIndex = playlist.findIndex(m => m.name === song.name);
             if (globalIndex !== -1) {
+                isPlaylistMode = true;
+                currentPlaylistSongs = allPlaylists[playlistIndex].songs
+                    .map(s => playlist.findIndex(m => m.name === s.name))
+                    .filter(i => i !== -1);
                 playMusic(globalIndex);
-            } else {
-                showInfo("Veuillez d'abord charger cette musique dans la Bibliothèque Web !", "Musique non chargée");
+                homeView.style.display = "block";
+                playListView.style.display = "none";
+                fileView.style.display = "none";
+                playlistDetailView.style.display = "none";
+                sidebar.classList.remove("active");
             }
         };
 
@@ -361,9 +742,10 @@ function renderPlaylistSongs(playlistIndex) {
         const removeBtn = document.createElement("button");
         removeBtn.textContent = "Retirer";
         removeBtn.classList.add("action-btn", "delete-btn");
+        removeBtn.style.width = "auto";
         removeBtn.onclick = () => {
             allPlaylists[playlistIndex].songs.splice(songIndex, 1);
-            savePlaylistsToWeb(); 
+            savePlaylistsToLocal();
             renderPlaylistSongs(playlistIndex);
         };
 
@@ -393,99 +775,140 @@ async function addMusicToPlayList(music) {
         modalSelect.appendChild(option);
     });
     modalOverlay.style.display = "flex";
-    
-    document.getElementById("modalConfirm").onclick = async () => {
+    modalConfirm.onclick = async () => {
         const indexChoisi = parseInt(modalSelect.value);
-        allPlaylists[indexChoisi].songs.push({ name: music.name });
-        savePlaylistsToWeb(); 
+        allPlaylists[indexChoisi].songs.push({ name: music.name, path: music.path || "" });
+        savePlaylistsToLocal();
         modalOverlay.style.display = "none";
         await showInfo(`Ajouté dans "${allPlaylists[indexChoisi].title}" !`, "Ajouté");
     };
-    
     modalCancel.onclick = () => { modalOverlay.style.display = "none"; };
 }
 
 // =============================================
-// LECTURE & CONTRÔLES AUDIO
+// PLAYLIST ACTIVE (brillance)
 // =============================================
-function playMusic(index) {
-    currentIndex = index;
-    const music = playlist[index];
-    audio.src = music.url;
-    audio.play();
-    icon.src = "Icons/Pause - Yellow.svg";
-    document.getElementById("musicTitle").textContent = music.name.replace(/\.[^/.]+$/, "");
-    if(music.fileObj) loadCoverFromWebFile(music.fileObj);
+function updateActivePlaylistSquare() {
+    if (playlist.length === 0 || currentIndex === -1) return;
+    
+    const currentMusicName = playlist[currentIndex].name.trim();
+    
+    // On prévient OBS que la musique a changé
+    notifyOBS();
+
+    const squares = document.querySelectorAll(".playlist-item");
+    allPlaylists.forEach((pl, index) => {
+        const isMusicInThisPlaylist = pl.songs.some(s => s.name.trim() === currentMusicName);
+        if (squares[index]) {
+            isMusicInThisPlaylist && !audio.paused
+                ? squares[index].classList.add("playing")
+                : squares[index].classList.remove("playing");
+        }
+    });
 }
 
-function loadCoverFromWebFile(file) {
-    if (typeof jsmediatags !== "undefined") {
-        jsmediatags.read(file, {
-            onSuccess: function(tag) {
-                const picture = tag.tags.picture;
-                if (picture) {
-                    let base64 = "";
-                    for (let i = 0; i < picture.data.length; i++) {
-                        base64 += String.fromCharCode(picture.data[i]);
-                    }
-                    cover.src = `data:${picture.format};base64,${btoa(base64)}`;
-                    cover.style.opacity = 1;
-                } else { cover.src = ""; cover.style.opacity = 0; }
-            },
-            onError: function() { cover.src = ""; cover.style.opacity = 0; }
+audio.addEventListener("play", updateActivePlaylistSquare);
+audio.addEventListener("pause", updateActivePlaylistSquare);
+audio.addEventListener("ended", updateActivePlaylistSquare);
+
+ipcRenderer.on('media-play-pause', () => { btn.click(); });
+ipcRenderer.on('media-next', () => { nextBtn.click(); });
+ipcRenderer.on('media-prev', () => { prevBtn.click(); });
+
+// =============================================
+// SYNCHRONISATION EN TEMPS RÉEL DU DOSSIER
+// =============================================
+const chooseMusicFolderBtn = document.getElementById('chooseMusicFolderBtn');
+if (chooseMusicFolderBtn) {
+    chooseMusicFolderBtn.addEventListener('click', async () => {
+        const folderPath = await ipcRenderer.invoke('choose-music-folder');
+        if (folderPath) {
+            await ipcRenderer.invoke('save-watched-folder', folderPath);
+            document.getElementById('watchedFolderPath').textContent = folderPath;
+            await startWatchingFolder(folderPath);
+            showInfo("Dossier synchronisé avec succès !", "Succès");
+        }
+    });
+}
+
+ipcRenderer.on('new-music-detected', async (event, file) => {
+    if (!playlist.find(m => m.name === file.name)) {
+        const url = `file:///${file.path.replace(/\\/g, '/')}`;
+        playlist.push({ name: file.name, url: url, path: file.path });
+        playlist.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+        await saveMusicList();
+        displayStoredFiles(); 
+    }
+});
+
+ipcRenderer.on('music-removed', async (event, file) => {
+    const index = playlist.findIndex(m => m.name === file.name);
+    if (index !== -1) {
+        playlist.splice(index, 1);
+        await saveMusicList();
+        displayStoredFiles(); 
+    }
+});
+
+// =============================================
+// FONCTION D'ENVOI DES DONNÉES VERS OBS
+// =============================================
+function notifyOBS() {
+    if (playlist.length === 0 || currentIndex === -1) return;
+
+    const rawName = playlist[currentIndex].name.trim();
+    const cleanName = rawName.replace(/\.[^/.]+$/, "");
+
+    const coverImg = document.getElementById("cover");
+    let coverData = "";
+    
+    if (coverImg.src && coverImg.src.startsWith("data:image")) {
+        coverData = coverImg.src;
+    }
+
+    ipcRenderer.send('update-current-track', { 
+        name: cleanName, 
+        cover: coverData 
+    });
+}
+
+// =============================================
+// GESTION DES OPTIONS OBS (BOUTON ET COPIE)
+// =============================================
+
+// 1. Gestion de l'affichage (Toggle)
+const toggleObsBtn = document.getElementById('toggleObsBtn');
+const obsOptions = document.getElementById('obsOptions');
+
+if (toggleObsBtn && obsOptions) {
+    toggleObsBtn.addEventListener('click', () => {
+        if (obsOptions.style.display === 'none') {
+            obsOptions.style.display = 'block';
+            toggleObsBtn.innerText = 'Cacher les options OBS';
+        } else {
+            obsOptions.style.display = 'none';
+            toggleObsBtn.innerText = 'Afficher les options OBS';
+        }
+    });
+}
+
+const copyObsBtn = document.getElementById('copyObsBtn');
+const obsLink = document.getElementById('obsLink');
+const copyBtnText = document.getElementById('copyBtnText');
+
+if (copyObsBtn && obsLink) {
+    copyObsBtn.addEventListener('click', () => {
+        const textToCopy = obsLink.innerText.trim();
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            // Animation bouton
+            copyObsBtn.classList.add('copied');
+            copyBtnText.textContent = '✅ Copié !';
+            setTimeout(() => {
+                copyObsBtn.classList.remove('copied');
+                copyBtnText.textContent = '📋 Copier';
+            }, 2500);
+        }).catch(err => {
+            console.error('Erreur copie :', err);
         });
-    }
+    });
 }
-
-// L'événement qui te renvoie à l'accueil automatiquement !
-audio.addEventListener("play", () => {
-    homeView.style.display = "block";
-    fileView.style.display = "none";
-    playListView.style.display = "none";
-    playlistDetailView.style.display = "none";
-    parametreView.style.display = "none";
-    sidebar.classList.remove("active");
-});
-
-btn.onclick = () => {
-    if (audio.src) {
-        if (audio.paused) { audio.play(); icon.src = "Icons/Pause - Yellow.svg"; } 
-        else { audio.pause(); icon.src = "Icons/Play - Yellow.svg"; }
-    }
-};
-
-nextBtn.onclick = () => {
-    if (playlist.length > 0) {
-        currentIndex = (currentIndex + 1) % playlist.length;
-        playMusic(currentIndex);
-    }
-};
-
-prevBtn.onclick = () => {
-    if (playlist.length > 0) {
-        currentIndex = (currentIndex - 1 + playlist.length) % playlist.length;
-        playMusic(currentIndex);
-    }
-};
-
-audio.addEventListener("timeupdate", () => {
-    if (!audio.duration) return;
-    const percent = (audio.currentTime / audio.duration) * 100;
-    progressDiv.style.width = percent + "%";
-    currentTimeEl.textContent = formatTime(audio.currentTime);
-    durationEl.textContent = formatTime(audio.duration);
-});
-
-progressConainerDiv.addEventListener("click", (e) => {
-    if (audio.duration) {
-        audio.currentTime = (e.offsetX / progressConainerDiv.clientWidth) * audio.duration;
-    }
-});
-
-function formatTime(time) {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60).toString().padStart(2, "0");
-    return minutes + ":" + seconds;
-}
-
-volumeControl.addEventListener("input", () => { audio.volume = parseFloat(volumeControl.value); });
