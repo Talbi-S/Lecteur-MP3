@@ -18,7 +18,7 @@ Télécharger Raven Music Player pour Windows (.exe) https://github.com/Talbi-S/
 
 Fonctionnalités Principales (Version Native)
 
-- Lecteur Audio Complet :** Lecture, pause, suivant, précédent, aléatoire (shuffle) et répétition.
+- Lecteur Audio Complet : Lecture, pause, suivant, précédent, aléatoire (shuffle) et répétition.
 - Scan de Dossier Dynamique : Surveille un dossier local et met à jour automatiquement la bibliothèque dès qu'une nouvelle musique y est ajoutée ou supprimée.
 - Gestion de Playlists : Création, renommage, suppression de playlists personnalisées et ajout de musiques.
 - Extraction de Métadonnées : Récupération et affichage automatiques des pochettes d'albums (via jsmediatags).
