@@ -64,10 +64,9 @@ main{
 }
 
 .titlebar {
-  -webkit-app-region: drag; /* rend la zone draggable */
+  -webkit-app-region: drag;
 }
 
-/* Les boutons (fermer, minimize...) doivent être no-drag ! */
 .titlebar button {
     -webkit-app-region: no-drag;
 }
@@ -97,7 +96,7 @@ main{
     width: 25px;
     height: 25px;
 }
-/* Menu Windows */
+
 .window-controls {
     position: absolute;
     top: 15px;
@@ -252,8 +251,6 @@ header h1 {
     letter-spacing: 2px;
     margin-bottom: 20px;
 }
-
-/* Tout mes Boutons */
 
 #addFilesBtn, #addPlayListBtn, #btnBackToPlaylists {
 background-color: #FCA311;
@@ -459,7 +456,6 @@ position: relative;
 
 /* Playlist */
 
-/* La liste qui vas contenir les carées */
 #playlistList {
     display: flex;
     flex-wrap: wrap;
@@ -468,8 +464,6 @@ position: relative;
     justify-content: flex-start;
     padding: 0 30px;
 }
-
-/* Le style de chaque carrée */
 
 .playlist-item {
     width: 150px;
@@ -490,7 +484,6 @@ position: relative;
     position: relative;
 }
 
-/* Bouton Supprimer Playlist */
 .playlist-menu-btn {
     background: transparent;
     border: none;
@@ -538,11 +531,10 @@ position: relative;
     transform: none;
 }
 
-/* Effect quand la souris passe dessus */
 .playlist-item:hover {
     background: #FCA311;
     color: #000000;
-    transform: scale(1.05); /* le carrée vas grossir un peu */
+    transform: scale(1.05);
     box-shadow: 0 5px 15px rgba(0,0,0,0.3);
 }
 
@@ -621,7 +613,9 @@ position: relative;
     transform: scale(1.05);
 }
 
-/* La Scroll Bar */
+/* =============================================
+   GESTION DES HAUTEURS POUR LE SCROLL
+   ============================================= */
 
 #fileView,
 #playListView,
@@ -630,31 +624,33 @@ position: relative;
     overflow-y: auto;
 }
 
-#fileView::-webkit-scrollbar,
-#playListView::-webkit-scrollbar,
-#playlistDetailView::-webkit-scrollbar {
-    width: 4px;
+/* =============================================
+   SCROLLBAR GLOBALE & DYNAMIQUE
+   ============================================= */
+
+::-webkit-scrollbar {
+    width: 14px; 
+    background-color: transparent;
 }
 
-#fileView::-webkit-scrollbar-track,
-#playListView::-webkit-scrollbar-track,
-#playlistDetailView::-webkit-scrollbar-track {
+::-webkit-scrollbar-track {
     background: #000000;
     border-radius: 10px;
 }
 
-#fileView::-webkit-scrollbar-thumb,
-#playListView::-webkit-scrollbar-thumb,
-#playlistDetailView::-webkit-scrollbar-thumb {
-    background: #FCA311;
+::-webkit-scrollbar-thumb {
+    background-color: #FCA311;
+    border-radius: 10px;
+    /* L'ASTUCE : On met une grosse bordure noire (de la couleur du fond) 
+       pour "écraser" la couleur orange et la rendre fine par défaut */
+    border: 4px solid #000000;
+    background-clip: padding-box;
 }
 
-#fileView::-webkit-scrollbar-thumb:hover,
-#playListView::-webkit-scrollbar-thumb:hover,
-#playlistDetailView::-webkit-scrollbar-thumb:hover {
-    height: calc(100vh - 60px);
-    overflow-y: auto;
-    background: #ffb833;
+::-webkit-scrollbar-thumb:hover {
+    background-color: #ffb833;
+    /* On affine la bordure : la couleur orange prend plus de place ! */
+    border: 2px solid #000000;
 }
 
 /* Modale Création d'une playlist */
@@ -671,7 +667,6 @@ position: relative;
     justify-content: center;
 }
 
-/* La boite */
 #modalCreateBox {
     background: #14213D;
     border: 2px solid #FCA311;
@@ -684,7 +679,6 @@ position: relative;
     gap: 15px;
 }
 
-/* Le titre */
 #modalCreateTitle {
     color: #FCA311;
     font-size: 18px;
@@ -692,7 +686,6 @@ position: relative;
     letter-spacing: 2px;
 }
 
-/* Le Champ de texte */
 #newPlayListName {
     background: #14213D;
     color: #FCA311;
@@ -704,14 +697,12 @@ position: relative;
     outline: none;
 }
 
-/* La zone des boutons */
 #modalCreateButtons {
     display: flex;
     justify-content: center;
     gap: 20px;
 }
 
-/* Boutons Créer */
 #modalCreateConfirm {
     background: #FCA311;
     color: #000000;
@@ -728,7 +719,6 @@ position: relative;
     transform: scale(1.05);
 }
 
-/* Boutons Annuler */
 #modalCreateCancel {
     background: #cc0000;
     color: white;
@@ -744,8 +734,6 @@ position: relative;
     background: #ff3333;
     transform: scale(1.05);
 }
-
-/* Taille Colonne */
 
 /* Largeur des colonnes du tableau Fichier */
 #fileTable th:nth-child(1),
@@ -772,7 +760,6 @@ position: relative;
 }
 
 /* Page Playlist */
-
 #playListView {
     width: 100%;
     max-width: 100%;
@@ -814,7 +801,6 @@ position: relative;
     margin: 10px 0 20px 0;
 }
 
-/* Le tableau des musiques */
 #playlistSongsTable {
     width: 100%;
     border-collapse: collapse;
@@ -841,7 +827,6 @@ position: relative;
     vertical-align: middle;
 }
 
-/* Header retour + Titre */
 #playlistDetailHeader {
     display: flex;
     align-items: center;
@@ -874,7 +859,6 @@ position: relative;
     overflow-y: auto;
 }
 
-/* Header */
 #parametreHeader {
     margin-bottom: 30px;
     padding: 10px 0;
@@ -899,7 +883,6 @@ position: relative;
     margin-bottom: 20px;
 }
 
-/* Titre de section */
 .parametre-section-title {
     color: #FCA311;
     font-size: 15px;
@@ -922,27 +905,23 @@ position: relative;
     border-bottom: none;
 }
 
-/* le label à gauche */
 .parametre-item label {
     color: #FCA311;
     font-size: 14px;
     text-align: left;
 }
 
-/* La valeur à droite */
 .parametre-value {
     color: rgba(252, 163, 17, 0.7);
     font-size: 14px;
 }
 
-/* La zone slider + pourcentage */
 .parametre-control {
     display: flex;
     align-items: center;
     gap: 10px;
 }
 
-/* Le slider volume par défaut */
 #defaultVolume {
     -webkit-appearance: none;
     appearance: none;
@@ -964,7 +943,6 @@ position: relative;
     cursor: pointer;
 }
 
-/* Le pourcentage affiché */
 #defaultVolumeValue {
     color: #FCA311;
     font-size: 13px;
@@ -1056,7 +1034,6 @@ position: relative;
     vertical-align: middle;
 }
 
-/* Largeur des colonnes */
 #fileTable th:nth-child(1),
 #fileTable td:nth-child(1) {
     width: 55%;
@@ -1106,7 +1083,7 @@ position: relative;
 }
 
 #playlistDetailHeader h2 {
-    flex: 1; /* prend tout l'espace disponible au centre */
+    flex: 1;
     text-align: center;
     margin: 0;
 }
@@ -1126,7 +1103,6 @@ position: relative;
    AJOUTER À LA FIN DE style.css
    ============================================= */
 
-/* Titre centré dans le header playlist */
 #playlistDetailHeader {
     display: flex;
     align-items: center;
@@ -1345,4 +1321,127 @@ position: relative;
 #removeMusicFolderBtn:hover {
     background-color: #ff3333;
     transform: scale(1.05);
+}
+
+/* Bouton d'options OBS */
+#toggleObsBtn {
+    background-color: #FCA311;
+    color: #000000;
+    font-size: 14px;
+    padding: 8px 15px;
+    border-radius: 5px;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+    transition: 0.3s;
+    font-family: 'font', Arial, sans-serif;
+    margin-bottom: 15px; 
+}
+
+#toggleObsBtn:hover {
+    background-color: #ffb833;
+    transform: scale(1.05);
+}
+
+/* ========== SECTION OBS ========== */
+
+#toggleObsBtn {
+    background: transparent;
+    border: 1px solid rgba(252, 163, 17, 0.4);
+    color: #FCA311;
+    padding: 8px 15px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    margin: 10px 0;
+    width: 100%;
+    text-align: left;
+    transition: all 0.2s ease;
+}
+
+#toggleObsBtn:hover {
+    background: rgba(252, 163, 17, 0.1);
+    border-color: #FCA311;
+}
+
+#obsOptions {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px dashed rgba(252, 163, 17, 0.3);
+}
+
+/* Conteneur lien + bouton */
+.obs-link-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(252, 163, 17, 0.2);
+    border-radius: 10px;
+    padding: 10px 15px;
+    margin: 10px 0;
+}
+
+/* Le lien lui même */
+#obsLink {
+    flex: 1;
+    color: rgba(252, 163, 17, 0.8);
+    font-family: monospace;
+    font-size: 13px;
+    word-break: break-all;
+}
+
+/* Le bouton copier */
+#copyObsBtn {
+    background: #FCA311;
+    color: #000000;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: bold;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+#copyObsBtn:hover {
+    background: #ffb833;
+    transform: scale(1.05);
+}
+
+/* Etat "copié" */
+#copyObsBtn.copied {
+    background: #00cc66;
+    color: #000000;
+}
+
+/* La boite d'info OBS */
+.obs-info-box {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(252, 163, 17, 0.15);
+    border-radius: 10px;
+    padding: 15px;
+    margin-top: 15px;
+}
+
+.obs-info-title {
+    color: #FCA311;
+    font-size: 13px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    text-align: left;
+}
+
+.obs-steps {
+    color: rgba(252, 163, 17, 0.8);
+    font-size: 12px;
+    padding-left: 20px;
+    text-align: left;
+    line-height: 2;
+}
+
+.obs-steps strong {
+    color: #FCA311;
 }
