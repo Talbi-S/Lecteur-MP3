@@ -4,7 +4,7 @@ Un lecteur de musique de bureau élégant et performant, développé avec **Elec
 
 Ce projet a été conçu pour offrir une interface utilisateur fluide et des fonctionnalités avancées de gestion audio, tout en explorant les capacités des applications de bureau hybrides.
 
-Voir la Démo Web - Version Allégée :  https://talbi-s.github.io/LecteurMP3/
+Voir la Démo Web - Version Allégée :  https://talbi-s.github.io/Lecteur-MP3/
 
 Note concernant la Démo Web :
 > Le lien ci-dessus est une version adaptée pour les navigateurs web afin d'apercevoir le design de l'application. Pour des raisons de sécurité liées aux navigateurs, les fonctionnalités natives (comme le scan automatique de dossiers locaux ou le serveur OBS) sont désactivées. 
