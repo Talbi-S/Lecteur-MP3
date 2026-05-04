@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lecteur de Music</title>
+    <title>Raven Music</title>
     <link rel="stylesheet" href="style.css">
     <script src="lib/jsmediatags.min.js"></script>
     <script src="app.js" defer></script>
@@ -11,7 +11,7 @@
 
 <body>
 <header class="titlebar">
-    <h1>Lecteur de Music</h1>
+    <h1>Media Player</h1>
 </header>
 <main>
 
@@ -33,7 +33,7 @@
     </div>
 </div>
 
-<div class="window-controls">
+<div class="window-controls" id="windowControls">
     <button class="control-btn" id="minimizeBtn">
         <img src="Icons/Minus - Yellow.svg" alt="Réduire">
     </button>
@@ -48,6 +48,9 @@
 <div id="fileView" style="display:none;">
     <div id="fileViewHeader">
         <h2>Bibliothèque</h2>
+        <!-- NOUVEAUTÉ WEB : Bouton caché par défaut, affiché uniquement sur GitHub -->
+        <input type="file" id="webFileInput" accept="audio/*" multiple style="display: none;">
+        <button id="addFilesWebBtn" style="display: none; background-color: #FCA311; color: #000; padding: 8px 15px; border-radius: 5px; border: none; cursor: pointer; font-weight: bold;">+ Ajouter des musiques</button>
     </div>
     <table id="fileTable">
         <thead>
@@ -177,13 +180,13 @@
         <h2>Paramètres</h2>
     </div>
 
-    <div class="parametre-section">
+    <div class="parametre-section" id="sectionDossier">
         <h3 class="parametre-section-title">Bibliothèque musicale</h3>
         <div class="parametre-item">
             <label>Dossier Ajouter</label>
             <span class="parametre-value" id="watchedFolderPath">Aucun dossier</span>
         </div>
-        <div class="parametre-item">
+        <div class="parametre-item" id="dossierControls">
                 <button id="chooseMusicFolderBtn">Modifier le dossier</button>
                 <button id="removeMusicFolderBtn">Supprimer</button>
         </div>
@@ -200,7 +203,7 @@
         </div>
     </div>
 
-<div class="parametre-section">
+<div class="parametre-section" id="sectionObs">
     <h3 class="parametre-section-title">🎙️ Streaming OBS</h3>
 
     <button id="toggleObsBtn">▶ Afficher les options OBS</button>
@@ -235,7 +238,7 @@
         </div>
         <div class="parametre-item">
             <label>Version</label>
-            <span class="parametre-value">1.0.0</span>
+            <span class="parametre-value">1.0.0 (Hybride)</span>
         </div>
         <div class="parametre-item">
             <label>Développeur</label>
