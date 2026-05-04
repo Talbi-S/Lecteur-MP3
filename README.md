@@ -14,7 +14,7 @@ Télécharger et Tester (Version PC Complète) :
 
 Pour profiter de l'intégralité des fonctionnalités (notamment la synchronisation de dossiers locaux et l'intégration OBS), téléchargez directement l'application prête à l'emploi :
 
-Télécharger Raven Music Player pour Windows (.exe) https://github.com/Talbi-S/LecteurMP3/releases/download/v1.0.0/Lecteur.MP3.Setup.1.0.0.exe
+Télécharger Raven Music Player pour Windows (.exe) https://github.com/Talbi-S/Lecteur-MP3/releases/download/v1.0.0/Lecteur.MP3.Setup.1.0.0.exe
 
 Fonctionnalités Principales (Version Native)
 
