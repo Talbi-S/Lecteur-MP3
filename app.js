@@ -1,4 +1,11 @@
-const { ipcRenderer } = require('electron');
+// DÉTECTION : Web ou Electron ?
+const isWeb = typeof require === 'undefined';
+let ipcRenderer = null;
+
+if (!isWeb) {
+    ipcRenderer = require('electron').ipcRenderer;
+}
+
 const audio = new Audio();
 
 // Elements HTML
@@ -47,6 +54,38 @@ let isPlaylistMode = false;
 let playlist = [];
 let currentIndex = 0;
 let lastVolume = 1;
+
+// =============================================
+// ADAPTATION POUR LA VERSION WEB
+// =============================================
+if (isWeb) {
+    document.getElementById('windowControls').style.display = 'none';
+    document.getElementById('sectionObs').style.display = 'none';
+    document.getElementById('dossierControls').innerHTML = '<span style="color: #cc0000; font-size: 13px;">Fonction exclusive à l\'application PC</span>';
+    
+    const addFilesWebBtn = document.getElementById('addFilesWebBtn');
+    const webFileInput = document.getElementById('webFileInput');
+    addFilesWebBtn.style.display = 'block';
+
+    addFilesWebBtn.addEventListener('click', () => webFileInput.click());
+
+    webFileInput.addEventListener('change', (e) => {
+        const files = Array.from(e.target.files);
+        files.forEach(file => {
+            const url = URL.createObjectURL(file);
+            if (!playlist.find(m => m.name === file.name)) {
+                playlist.push({ name: file.name, url: url, path: file.name, fileObj: file });
+            }
+        });
+        playlist.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+        displayStoredFiles();
+        
+        if(playlistElement) {
+            playlistElement.innerHTML = "";
+            playlist.forEach((music, index) => addToPlaylist(music.name, index));
+        }
+    });
+}
 
 // =============================================
 // MODALES CUSTOM
@@ -140,6 +179,8 @@ init();
 // CHARGEMENT / SAUVEGARDE
 // =============================================
 async function loadFilesFromLocal() {
+    if (isWeb) return; 
+    
     const saved = await ipcRenderer.invoke('get-music-list');
     for (let music of saved) {
         if (!music.path) continue;
@@ -158,15 +199,25 @@ async function loadFilesFromLocal() {
 }
 
 async function loadPlaylistsFromLocal() {
-    allPlaylists = await ipcRenderer.invoke('load-playlists');
+    if (isWeb) {
+        const savedPl = localStorage.getItem("webPlaylists");
+        if (savedPl) allPlaylists = JSON.parse(savedPl);
+    } else {
+        allPlaylists = await ipcRenderer.invoke('load-playlists');
+    }
     displayPlaylist();
 }
 
 async function saveMusicList() {
+    if (isWeb) return;
     await ipcRenderer.invoke('save-music-list', playlist.map(m => ({ name: m.name, path: m.path })));
 }
 
 async function savePlaylistsToLocal() {
+    if (isWeb) {
+        localStorage.setItem("webPlaylists", JSON.stringify(allPlaylists));
+        return;
+    }
     const toSave = allPlaylists.map(pl => ({
         title: pl.title,
         songs: pl.songs.map(s => ({ name: s.name, path: s.path || "" }))
@@ -177,24 +228,28 @@ async function savePlaylistsToLocal() {
 // =============================================
 // SURVEILLANCE DU DOSSIER PRINCIPAL
 // =============================================
-document.getElementById('removeMusicFolderBtn').addEventListener('click', async () => {
-    const ok = await showConfirm("Supprimer le dossier surveillé ? Les musiques resteront dans la bibliothèque.", "Supprimer le dossier");
-    if (!ok) return;
+const removeMusicFolderBtn = document.getElementById('removeMusicFolderBtn');
+if (removeMusicFolderBtn && !isWeb) {
+    removeMusicFolderBtn.addEventListener('click', async () => {
+        const ok = await showConfirm("Supprimer le dossier surveillé ? Les musiques resteront dans la bibliothèque.", "Supprimer le dossier");
+        if (!ok) return;
 
-    await ipcRenderer.invoke('remove-watched-folder');
-    await ipcRenderer.invoke('stop-watching');
+        await ipcRenderer.invoke('remove-watched-folder');
+        await ipcRenderer.invoke('stop-watching');
 
-    playlist = [];
-    await saveMusicList();
-    currentPage = 0;
-    displayStoredFiles();
-    if (playlistElement) playlistElement.innerHTML = "";
+        playlist = [];
+        await saveMusicList();
+        currentPage = 0;
+        displayStoredFiles();
+        if (playlistElement) playlistElement.innerHTML = "";
 
-    document.getElementById('watchedFolderPath').textContent = "Aucun dossier";
-    await showInfo("Bibliothèque réinitialisée avec succès.", "Nettoyage");
-});
+        document.getElementById('watchedFolderPath').textContent = "Aucun dossier";
+        await showInfo("Bibliothèque réinitialisée avec succès.", "Nettoyage");
+    });
+}
 
 async function startWatchingFolder(folderPath) {
+    if (isWeb) return;
     const files = await ipcRenderer.invoke('watch-folder', folderPath);
     const newFiles = files.filter(f => !playlist.find(m => m.name === f.name));
     if (newFiles.length > 0) await addFilesToPlaylist(newFiles);
@@ -234,7 +289,7 @@ function playMusic(index) {
     audio.src = music.url;
     audio.play();
     icon.src = "Icons/Pause - Yellow.svg";
-    loadCoverFromPath(music.path);
+    loadCover(music);
     document.getElementById("musicTitle").textContent = music.name.replace(/\.[^/.]+$/, "");
     document.querySelectorAll("[data-index]").forEach(li => { li.style.background = ""; });
     const active = document.querySelector(`[data-index="${index}"]`);
@@ -242,21 +297,14 @@ function playMusic(index) {
     updateActivePlaylistSquare();
 }
 
-function loadCoverFromPath(filePath) {
-    if (!filePath) { 
+function loadCover(music) {
+    if (!music) { 
         cover.src = ""; 
-        notifyOBS(); 
+        if(!isWeb) notifyOBS(); 
         return; 
     }
-    
-    try {
-        const fs = require('fs');
-        const fd = fs.openSync(filePath, 'r');
-        const buf = Buffer.alloc(512 * 1024);
-        fs.readSync(fd, buf, 0, buf.length, 0);
-        fs.closeSync(fd);
-        const blob = new Blob([buf]);
-        
+
+    const processTags = (blob) => {
         jsmediatags.read(blob, {
             onSuccess: function(tag) {
                 const picture = tag.tags.picture;
@@ -269,16 +317,33 @@ function loadCoverFromPath(filePath) {
                 } else {
                     cover.src = "";
                 }
-                notifyOBS(); 
+                if(!isWeb) notifyOBS(); 
             },
             onError: function() { 
                 cover.src = ""; 
-                notifyOBS(); 
+                if(!isWeb) notifyOBS(); 
             }
         });
-    } catch(e) { 
-        cover.src = ""; 
-        notifyOBS(); 
+    };
+
+    if (isWeb && music.fileObj) {
+        processTags(music.fileObj);
+    } else if (!isWeb && music.path) {
+        try {
+            const fs = require('fs');
+            const fd = fs.openSync(music.path, 'r');
+            const buf = Buffer.alloc(512 * 1024);
+            fs.readSync(fd, buf, 0, buf.length, 0);
+            fs.closeSync(fd);
+            const blob = new Blob([buf]);
+            processTags(blob);
+        } catch(e) { 
+            cover.src = ""; 
+            notifyOBS(); 
+        }
+    } else {
+        cover.src = "";
+        if(!isWeb) notifyOBS();
     }
 }
 
@@ -299,6 +364,7 @@ btn.onclick = () => {
 };
 
 nextBtn.onclick = () => {
+    if (playlist.length === 0) return;
     if (shuffleMode) {
         if (isPlaylistMode && currentPlaylistSongs.length > 0) {
             playMusic(currentPlaylistSongs[Math.floor(Math.random() * currentPlaylistSongs.length)]);
@@ -315,6 +381,7 @@ nextBtn.onclick = () => {
 };
 
 prevBtn.onclick = () => {
+    if (playlist.length === 0) return;
     if (shuffleMode) {
         if (isPlaylistMode && currentPlaylistSongs.length > 0) {
             playMusic(currentPlaylistSongs[Math.floor(Math.random() * currentPlaylistSongs.length)]);
@@ -335,10 +402,12 @@ shuffleBtn.onclick = () => {
     shuffleMode = !shuffleMode;
     if (shuffleMode) {
         shuffleBtn.querySelector('img').classList.add("active-control");
-        if (isPlaylistMode && currentPlaylistSongs.length > 0) {
-            playMusic(currentPlaylistSongs[Math.floor(Math.random() * currentPlaylistSongs.length)]);
-        } else {
-            playMusic(Math.floor(Math.random() * playlist.length));
+        if(playlist.length > 0) {
+            if (isPlaylistMode && currentPlaylistSongs.length > 0) {
+                playMusic(currentPlaylistSongs[Math.floor(Math.random() * currentPlaylistSongs.length)]);
+            } else {
+                playMusic(Math.floor(Math.random() * playlist.length));
+            }
         }
     } else {
         shuffleBtn.querySelector('img').classList.remove("active-control");
@@ -376,7 +445,6 @@ audio.addEventListener("ended", () => {
 });
 
 audio.addEventListener("play", () => {
-    // On redirige vers Home seulement si on n'est pas déjà dans une autre vue
     if (parametreView.style.display === "block") return;
     homeView.style.display = "block";
     fileView.style.display = "none";
@@ -388,10 +456,14 @@ audio.addEventListener("play", () => {
 // NAVIGATION SIDEBAR
 // =============================================
 menuToggle.addEventListener("click", async () => {
-    const width = await ipcRenderer.invoke('get-window-size');
-    if (width < 800) {
-        ipcRenderer.send('expand-window');
-        setTimeout(() => { sidebar.classList.add("active"); }, 150);
+    if (!isWeb) {
+        const width = await ipcRenderer.invoke('get-window-size');
+        if (width < 800) {
+            ipcRenderer.send('expand-window');
+            setTimeout(() => { sidebar.classList.add("active"); }, 150);
+        } else {
+            sidebar.classList.toggle("active");
+        }
     } else {
         sidebar.classList.toggle("active");
     }
@@ -439,9 +511,11 @@ document.getElementById("btnParametre").addEventListener("click", () => {
 // =============================================
 // CONTRÔLES FENÊTRE ELECTRON
 // =============================================
-document.getElementById('minimizeBtn').addEventListener('click', () => { ipcRenderer.send('minimize-window'); });
-document.getElementById('maximizeBtn').addEventListener('click', () => { ipcRenderer.send('maximize-window'); });
-document.getElementById('closeBtn').addEventListener('click', () => { ipcRenderer.send('close-window'); });
+if (!isWeb) {
+    document.getElementById('minimizeBtn').addEventListener('click', () => { ipcRenderer.send('minimize-window'); });
+    document.getElementById('maximizeBtn').addEventListener('click', () => { ipcRenderer.send('maximize-window'); });
+    document.getElementById('closeBtn').addEventListener('click', () => { ipcRenderer.send('close-window'); });
+}
 
 // =============================================
 // PROGRESSION & VOLUME
@@ -794,7 +868,7 @@ function updateActivePlaylistSquare() {
     const currentMusicName = playlist[currentIndex].name.trim();
     
     // On prévient OBS que la musique a changé
-    notifyOBS();
+    if(!isWeb) notifyOBS();
 
     const squares = document.querySelectorAll(".playlist-item");
     allPlaylists.forEach((pl, index) => {
@@ -811,15 +885,17 @@ audio.addEventListener("play", updateActivePlaylistSquare);
 audio.addEventListener("pause", updateActivePlaylistSquare);
 audio.addEventListener("ended", updateActivePlaylistSquare);
 
-ipcRenderer.on('media-play-pause', () => { btn.click(); });
-ipcRenderer.on('media-next', () => { nextBtn.click(); });
-ipcRenderer.on('media-prev', () => { prevBtn.click(); });
+if (!isWeb) {
+    ipcRenderer.on('media-play-pause', () => { btn.click(); });
+    ipcRenderer.on('media-next', () => { nextBtn.click(); });
+    ipcRenderer.on('media-prev', () => { prevBtn.click(); });
+}
 
 // =============================================
 // SYNCHRONISATION EN TEMPS RÉEL DU DOSSIER
 // =============================================
 const chooseMusicFolderBtn = document.getElementById('chooseMusicFolderBtn');
-if (chooseMusicFolderBtn) {
+if (chooseMusicFolderBtn && !isWeb) {
     chooseMusicFolderBtn.addEventListener('click', async () => {
         const folderPath = await ipcRenderer.invoke('choose-music-folder');
         if (folderPath) {
@@ -831,30 +907,32 @@ if (chooseMusicFolderBtn) {
     });
 }
 
-ipcRenderer.on('new-music-detected', async (event, file) => {
-    if (!playlist.find(m => m.name === file.name)) {
-        const url = `file:///${file.path.replace(/\\/g, '/')}`;
-        playlist.push({ name: file.name, url: url, path: file.path });
-        playlist.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
-        await saveMusicList();
-        displayStoredFiles(); 
-    }
-});
+if (!isWeb) {
+    ipcRenderer.on('new-music-detected', async (event, file) => {
+        if (!playlist.find(m => m.name === file.name)) {
+            const url = `file:///${file.path.replace(/\\/g, '/')}`;
+            playlist.push({ name: file.name, url: url, path: file.path });
+            playlist.sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }));
+            await saveMusicList();
+            displayStoredFiles(); 
+        }
+    });
 
-ipcRenderer.on('music-removed', async (event, file) => {
-    const index = playlist.findIndex(m => m.name === file.name);
-    if (index !== -1) {
-        playlist.splice(index, 1);
-        await saveMusicList();
-        displayStoredFiles(); 
-    }
-});
+    ipcRenderer.on('music-removed', async (event, file) => {
+        const index = playlist.findIndex(m => m.name === file.name);
+        if (index !== -1) {
+            playlist.splice(index, 1);
+            await saveMusicList();
+            displayStoredFiles(); 
+        }
+    });
+}
 
 // =============================================
 // FONCTION D'ENVOI DES DONNÉES VERS OBS
 // =============================================
 function notifyOBS() {
-    if (playlist.length === 0 || currentIndex === -1) return;
+    if (isWeb || playlist.length === 0 || currentIndex === -1) return;
 
     const rawName = playlist[currentIndex].name.trim();
     const cleanName = rawName.replace(/\.[^/.]+$/, "");
@@ -875,12 +953,10 @@ function notifyOBS() {
 // =============================================
 // GESTION DES OPTIONS OBS (BOUTON ET COPIE)
 // =============================================
-
-// 1. Gestion de l'affichage (Toggle)
 const toggleObsBtn = document.getElementById('toggleObsBtn');
 const obsOptions = document.getElementById('obsOptions');
 
-if (toggleObsBtn && obsOptions) {
+if (toggleObsBtn && obsOptions && !isWeb) {
     toggleObsBtn.addEventListener('click', () => {
         if (obsOptions.style.display === 'none') {
             obsOptions.style.display = 'block';
@@ -896,11 +972,10 @@ const copyObsBtn = document.getElementById('copyObsBtn');
 const obsLink = document.getElementById('obsLink');
 const copyBtnText = document.getElementById('copyBtnText');
 
-if (copyObsBtn && obsLink) {
+if (copyObsBtn && obsLink && !isWeb) {
     copyObsBtn.addEventListener('click', () => {
         const textToCopy = obsLink.innerText.trim();
         navigator.clipboard.writeText(textToCopy).then(() => {
-            // Animation bouton
             copyObsBtn.classList.add('copied');
             copyBtnText.textContent = '✅ Copié !';
             setTimeout(() => {
